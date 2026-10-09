@@ -31,3 +31,15 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+
+# Terraform variable files may contain sensitive values
+*.tfvars
+!terraform/terraform.tfvars.example

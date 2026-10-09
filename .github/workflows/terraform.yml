@@ -31,6 +31,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Verify AWS role secret is configured
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "AWS_ROLE_ARN secret is missing or empty"
+            exit 1
+          else
+            echo "AWS_ROLE_ARN secret is present"
+          fi
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:

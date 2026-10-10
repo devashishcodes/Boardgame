@@ -1,4 +1,3 @@
-
 name: Boardgame CI
 
 on:
@@ -15,7 +14,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Secret Scan, Build and Test
+    name: Secret Scan, Build, Test and SonarQube
     runs-on: ubuntu-latest
 
     steps:
@@ -36,8 +35,12 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Build and run unit tests
-        run: ./mvnw --batch-mode clean verify
+      - name: Build, test and analyze with SonarQube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          ./mvnw --batch-mode clean verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
 
       - name: Upload Maven test reports
         if: always()

@@ -14,7 +14,7 @@ private_subnet_az2_cidr = "10.0.12.0/24"
 instance_type = "t3.micro"
 
 # ssh-keygen -t ed25519 -f boardgame_deploy  ->  .pub ka content yaha, private key GitHub secret me
-ssh_public_key = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAp12hejkdGbhowBFZ7pE+YzctmrBaS7fNAm50oqcGPf devashish@AsusRog
+ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAp12hejkdGbhowBFZ7pE+YzctmrBaS7fNAm50oqcGPf devashish@AsusRog"
 
 # Domain LAST me: neeche dono lines uncomment karke apna domain daalo -> HTTPS + Route53 ban jayenge.
 # Tab tak khali raho, app ALB ke DNS par HTTP se chalegi.

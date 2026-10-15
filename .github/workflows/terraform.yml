@@ -1,78 +1,150 @@
+name: Terraform Infra
 
-name: Terraform Infrastructure
-
+# Poora AWS infra Terraform se: fmt -> validate -> plan -> (approval) apply / destroy.
+# Runner: repo variable RUNNER_LABELS (JSON). Khali = GitHub-hosted (ubuntu-latest).
+# Pritunl VPN ke andar chalane ke liye: RUNNER_LABELS = ["self-hosted","linux","pritunl"]
 on:
   pull_request:
     paths:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment"
+        type: choice
+        options: [production, staging]
+        default: production
+      action:
+        description: "Action"
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write # AWS OIDC
+
+concurrency:
+  group: terraform-${{ inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.11.4"
+  TF_ENV: ${{ inputs.environment || 'production' }}
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  AWS_REGION: ap-south-1
+
+defaults:
+  run:
+    working-directory: terraform
 
 jobs:
-  terraform:
-    name: Terraform Validate and Plan
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: terraform
-
+  plan:
+    name: Plan
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-latest"]') }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Verify AWS role secret is configured
+      - name: Pick state key and var-file
+        id: cfg
         run: |
-          if [ -z "$AWS_ROLE_ARN" ]; then
-            echo "AWS_ROLE_ARN secret is missing or empty"
-            exit 1
+          if [ "$TF_ENV" = "production" ]; then
+            echo "key=boardgame/terraform.tfstate" >> "$GITHUB_OUTPUT"   # existing key
+            echo "varfile=terraform.tfvars" >> "$GITHUB_OUTPUT"
           else
-            echo "AWS_ROLE_ARN secret is present"
+            echo "key=boardgame/${TF_ENV}/terraform.tfstate" >> "$GITHUB_OUTPUT"
+            echo "varfile=envs/${TF_ENV}.tfvars" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
 
-      - name: Debug GitHub OIDC claims
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-            const payload = JSON.parse(
-              Buffer.from(token.split('.')[1], 'base64url').toString()
-            );
-            console.log('OIDC issuer:', payload.iss);
-            console.log('OIDC audience:', payload.aud);
-            console.log('OIDC subject:', payload.sub);
-
-      - name: Configure AWS credentials using OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.11.4
+          terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform Format Check
+      - name: Terraform fmt
         run: terraform fmt -check -recursive
 
-      - name: Terraform Init
-        run: terraform init -input=false
+      - name: Terraform init
+        run: terraform init -backend-config="key=${{ steps.cfg.outputs.key }}"
 
-      - name: Terraform Validate
+      - name: Terraform validate
         run: terraform validate
 
-      - name: Terraform Plan
-        run: terraform plan -input=false -no-color
+      - name: Terraform plan
+        run: |
+          if [ "${{ inputs.action }}" = "destroy" ]; then
+            terraform plan -destroy -var-file="${{ steps.cfg.outputs.varfile }}" -no-color -out=tfplan
+          else
+            terraform plan -var-file="${{ steps.cfg.outputs.varfile }}" -no-color -out=tfplan
+          fi
+
+      - name: Plan summary
+        run: |
+          {
+            echo '### Terraform plan (`'"${TF_ENV}"'`)'
+            echo '```'
+            terraform show -no-color tfplan | head -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ env.TF_ENV }}
+          path: terraform/tfplan
+          retention-days: 3
+
+  apply:
+    name: Apply
+    needs: plan
+    # main push ya manual apply/destroy. PR me sirf plan chalta hai.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action != 'plan')
+    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-latest"]') }}
+    # GitHub Environment par "Required reviewers" laga do => manual approval
+    environment: ${{ inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick state key
+        id: cfg
+        run: |
+          if [ "$TF_ENV" = "production" ]; then
+            echo "key=boardgame/terraform.tfstate" >> "$GITHUB_OUTPUT"
+          else
+            echo "key=boardgame/${TF_ENV}/terraform.tfstate" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ env.TF_ENV }}
+          path: terraform
+
+      - name: Terraform init
+        run: terraform init -backend-config="key=${{ steps.cfg.outputs.key }}"
+
+      - name: Terraform apply
+        run: terraform apply -no-color tfplan
+
+      - name: Outputs
+        run: terraform output

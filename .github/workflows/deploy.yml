@@ -1,0 +1,131 @@
+name: Deploy
+
+# CD: private EC2 par SSH (Pritunl VPN / VPC peering ke through) -> docker pull & run
+# -> health check -> Slack deploy status
+on:
+  # main par CI pass hone ke baad auto deploy
+  workflow_run:
+    workflows: ["CI Checks"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Deploy karne wala image tag (khali = latest)"
+        type: string
+        default: latest
+      environment:
+        type: choice
+        options: [production, staging]
+        default: production
+  workflow_call: # staging.yml yaha se call karta hai
+    inputs:
+      image_tag:
+        type: string
+        required: true
+      environment:
+        type: string
+        default: production
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    # workflow_run me sirf tab jab CI successful ho
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, linux, pritunl] # SSH private EC2 ke liye Pritunl network zaroori
+    environment: ${{ inputs.environment || 'production' }}
+    env:
+      DEPLOY_ENV: ${{ inputs.environment || 'production' }}
+      APP_PORT: "8080"
+      IMAGE_NAME: ${{ vars.DOCKERHUB_USERNAME }}/boardgame
+    steps:
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            TAG="${SHA::7}"
+          else
+            TAG="${{ inputs.image_tag || 'latest' }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-south-1' }}
+
+      - name: Find app servers (private IPs)
+        id: hosts
+        run: |
+          IPS=$(aws ec2 describe-instances \
+            --filters "Name=tag:Environment,Values=${DEPLOY_ENV}" \
+                      "Name=tag:Role,Values=app" \
+                      "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].PrivateIpAddress' --output text)
+          [ -n "$IPS" ] || { echo "Koi running instance nahi mila"; exit 1; }
+          echo "ips=$IPS" >> "$GITHUB_OUTPUT"
+          echo "Servers: $IPS"
+
+      - name: Setup SSH key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/boardgame_deploy
+          chmod 600 ~/.ssh/boardgame_deploy
+
+      # Rolling deploy: ek server ek time par
+      - name: Deploy containers
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          for ip in ${{ steps.hosts.outputs.ips }}; do
+            echo "==> Deploying $IMAGE_NAME:$TAG on $ip"
+            ssh -i ~/.ssh/boardgame_deploy -o StrictHostKeyChecking=accept-new \
+                -o ConnectTimeout=15 ec2-user@"$ip" \
+                "DOCKERHUB_USERNAME='$DOCKERHUB_USERNAME' DOCKERHUB_TOKEN='$DOCKERHUB_TOKEN' IMAGE='$IMAGE_NAME:$TAG' APP_PORT='$APP_PORT' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+          docker pull "$IMAGE"
+          docker rm -f boardgame 2>/dev/null || true
+          docker run -d --name boardgame --restart unless-stopped \
+            -p "$APP_PORT:8080" "$IMAGE"
+          # local health check (max ~2 min)
+          for i in $(seq 1 24); do
+            if curl -fsS -o /dev/null "http://localhost:$APP_PORT/"; then
+              echo "healthy"; exit 0
+            fi
+            sleep 5
+          done
+          echo "health check fail"; docker logs --tail 50 boardgame; exit 1
+          REMOTE
+          done
+
+      - name: Public domain check
+        if: vars.DOMAIN_NAME != ''
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS -o /dev/null "https://${{ vars.DOMAIN_NAME }}/"; then
+              echo "https://${{ vars.DOMAIN_NAME }} OK"; exit 0
+            fi
+            sleep 10
+          done
+          echo "Domain check fail"; exit 1
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/boardgame_deploy
+
+      - name: Slack deploy status
+        if: always()
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "${{ job.status == 'success' && ':rocket:' || ':x:' }} *Deploy ${{ job.status }}* | env: ${{ env.DEPLOY_ENV }} | image: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

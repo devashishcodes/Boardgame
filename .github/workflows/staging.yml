@@ -1,0 +1,27 @@
+name: Staging
+
+# container.yml (CI) aur deploy.yml (CD) ko reuse karta hai aur
+# staging ke liye values override karta hai (environment = staging).
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/container.yml
+    with:
+      environment: staging
+    secrets: inherit
+
+  deploy:
+    needs: ci
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ needs.ci.outputs.image_tag }}
+    secrets: inherit

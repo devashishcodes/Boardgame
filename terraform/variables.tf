@@ -4,8 +4,14 @@ variable "aws_region" {
 }
 
 variable "project_name" {
-  description = "Project name"
+  description = "Project name (resource names ka prefix)"
   type        = string
+}
+
+variable "environment" {
+  description = "production ya staging (EC2 tag, deploy isi se servers dhundta hai)"
+  type        = string
+  default     = "production"
 }
 
 variable "vpc_cidr" {
@@ -31,4 +37,40 @@ variable "private_subnet_az1_cidr" {
 variable "private_subnet_az2_cidr" {
   description = "Private subnet CIDR for AZ2"
   type        = string
+}
+
+variable "instance_type" {
+  type    = string
+  default = "t3.micro"
+}
+
+variable "ssh_public_key" {
+  description = "SSH PUBLIC key (ssh-ed25519 ...). Private key GitHub secret EC2_SSH_PRIVATE_KEY me jayegi"
+  type        = string
+}
+
+variable "app_port" {
+  type    = number
+  default = 8080
+}
+
+variable "health_check_path" {
+  type    = string
+  default = "/"
+}
+
+variable "domain_name" {
+  description = "App ka FQDN, e.g. boardgame.example.com"
+  type        = string
+}
+
+variable "hosted_zone_name" {
+  description = "Route53 public hosted zone, e.g. example.com"
+  type        = string
+}
+
+variable "ssh_allowed_cidrs" {
+  description = "SSH allow CIDRs. Empty = default VPC CIDR (jaha Pritunl hai)"
+  type        = list(string)
+  default     = []
 }

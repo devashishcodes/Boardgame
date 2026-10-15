@@ -40,8 +40,9 @@ default-vpc (Pritunl + runner) <== VPC peering ==> boardgame-vpc
 
 1. SSH key: `ssh-keygen -t ed25519 -f boardgame_deploy` -> `.pub` ka content `terraform/terraform.tfvars` me
    `ssh_public_key` me, private key GitHub secret `EC2_SSH_PRIVATE_KEY` me.
-2. `terraform/terraform.tfvars` (aur `envs/staging.tfvars`) me `CHANGE_ME` values badlo: `ssh_public_key`,
-   `domain_name`, `hosted_zone_name`. Route53 public hosted zone pehle se honi chahiye.
+2. `terraform/terraform.tfvars` me `ssh_public_key` badlo. Domain (`domain_name`, `hosted_zone_name`) **last me**:
+   khali rahe to app ALB DNS par HTTP se chalti hai; dono daalte hi HTTPS (ACM) + Route53 ban jata hai.
+   Route53 public hosted zone pehle se honi chahiye.
 3. AWS OIDC role (`AWS_ROLE_ARN`) ki permissions plan ke alawa **apply** ke liye bhi chahiye:
    EC2, VPC, ELB, ACM, Route53, IAM (role/instance profile), S3 state bucket.
 4. State bucket: `devashish-boardgame-terraform-state-2026` (backend.tf me already hai).
@@ -71,6 +72,6 @@ Environments: `production` (Required reviewers ON), `staging`.
 ## Notes
 
 - Existing flat `.tf` files modules me convert hui hain; diagram ke hisaab se ab 1 NAT gateway + 1 private route table hai.
-- ALB ab HTTPS (443, ACM) par chalta hai, HTTP:80 redirect karta hai (pehle temporary HTTP listener tha).
+- Domain set hone par ALB HTTPS (443, ACM) chalata hai aur HTTP:80 redirect karta hai; domain ke bina port 80 par seedha app.
 - NAT sirf AZ-01 me hai – AZ-01 down hua to AZ-02 ke private instance ka outbound band ho jayega.
 - Ye Terraform `terraform validate`/`plan` se abhi test nahi hua; pehle PR par plan chalao.

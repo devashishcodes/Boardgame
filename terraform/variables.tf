@@ -60,13 +60,15 @@ variable "health_check_path" {
 }
 
 variable "domain_name" {
-  description = "App ka FQDN, e.g. boardgame.example.com"
+  description = "App ka FQDN, e.g. boardgame.example.com. Khali = domain/HTTPS abhi nahi (ALB DNS par HTTP)"
   type        = string
+  default     = ""
 }
 
 variable "hosted_zone_name" {
-  description = "Route53 public hosted zone, e.g. example.com"
+  description = "Route53 public hosted zone, e.g. example.com. Khali = domain abhi nahi"
   type        = string
+  default     = ""
 }
 
 variable "ssh_allowed_cidrs" {

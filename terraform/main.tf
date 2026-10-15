@@ -11,14 +11,19 @@ data "aws_route_tables" "default" {
   vpc_id = data.aws_vpc.default.id
 }
 
-data "aws_route53_zone" "this" {
-  name         = var.hosted_zone_name
-  private_zone = false
-}
-
 locals {
   azs               = slice(data.aws_availability_zones.available.names, 0, 2)
   ssh_allowed_cidrs = length(var.ssh_allowed_cidrs) > 0 ? var.ssh_allowed_cidrs : [data.aws_vpc.default.cidr_block]
+
+  # Domain optional: domain_name + hosted_zone_name dono bharo to HTTPS + Route53 ban jayenge
+  enable_domain = var.domain_name != "" && var.hosted_zone_name != ""
+}
+
+data "aws_route53_zone" "this" {
+  count = local.enable_domain ? 1 : 0
+
+  name         = var.hosted_zone_name
+  private_zone = false
 }
 
 # ---- Network: VPC, 2 public + 2 private subnets, IGW, 1 NAT, route tables ----
@@ -69,12 +74,13 @@ module "ec2" {
   ssh_public_key     = var.ssh_public_key
 }
 
-# ---- TLS certificate (ACM, DNS validation) ----
+# ---- TLS certificate (ACM, DNS validation) - sirf domain ke saath ----
 module "acm" {
   source = "./modules/acm"
+  count  = local.enable_domain ? 1 : 0
 
   domain_name = var.domain_name
-  zone_id     = data.aws_route53_zone.this.zone_id
+  zone_id     = data.aws_route53_zone.this[0].zone_id
 }
 
 # ---- ALB + target group (public subnets) ----
@@ -85,17 +91,19 @@ module "alb" {
   vpc_id            = module.vpc.vpc_id
   public_subnet_ids = module.vpc.public_subnet_ids
   alb_sg_id         = module.security_groups.alb_sg_id
-  certificate_arn   = module.acm.certificate_arn
+  enable_https      = local.enable_domain
+  certificate_arn   = local.enable_domain ? module.acm[0].certificate_arn : ""
   instance_ids      = module.ec2.instance_ids
   app_port          = var.app_port
   health_check_path = var.health_check_path
 }
 
-# ---- Domain -> ALB ----
+# ---- Domain -> ALB (sirf domain ke saath) ----
 module "route53" {
   source = "./modules/route53"
+  count  = local.enable_domain ? 1 : 0
 
-  zone_id      = data.aws_route53_zone.this.zone_id
+  zone_id      = data.aws_route53_zone.this[0].zone_id
   domain_name  = var.domain_name
   alb_dns_name = module.alb.alb_dns_name
   alb_zone_id  = module.alb.alb_zone_id

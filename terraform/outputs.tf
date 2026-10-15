@@ -11,7 +11,7 @@ output "app_private_ips" {
 }
 
 output "app_url" {
-  value = "https://${var.domain_name}"
+  value = local.enable_domain ? "https://${var.domain_name}" : "http://${module.alb.alb_dns_name}"
 }
 
 output "vpc_peering_id" {

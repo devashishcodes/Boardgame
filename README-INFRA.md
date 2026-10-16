@@ -65,8 +65,8 @@ Environments: `production` (Required reviewers ON), `staging`.
 ## Chalane ka order
 
 1. Actions -> **Terraform Infra** -> Run workflow (production, `plan`) -> plan dekho.
-2. `main` par merge ya `apply` -> approval -> infra + ACM cert + domain record ban jayega.
-3. `main` par push -> **CI Checks** -> pass hone par **Deploy** auto chalega.
+2. **Apply sirf manual**: Actions -> Terraform Infra -> Run workflow -> action `apply` (main merge par auto-apply nahi hota).
+3. `main` par push -> **CI Checks**. Infra ban jane ke baad repo variable `AUTO_DEPLOY=true` set karo, phir CI pass hone par **Deploy** auto chalega (tab tak Deploy ko manually Run workflow karo).
 4. `staging` branch par push -> `staging.yml`. Pehle Terraform Infra se environment `staging` apply karo.
 
 ## Notes

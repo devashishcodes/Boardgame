@@ -93,6 +93,10 @@ jobs:
         run: >
           ./mvnw --batch-mode --no-transfer-progress verify
           org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          -Dsonar.host.url=https://sonarcloud.io
+          -Dsonar.organization=devashishcodes
+          -Dsonar.projectKey=devashishcodes_Boardgame
+          -Dsonar.projectName=Boardgame
           -Dsonar.qualitygate.wait=true
 
       - name: Upload Sonar report info

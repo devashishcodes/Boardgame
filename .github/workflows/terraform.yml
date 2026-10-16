@@ -107,10 +107,9 @@ jobs:
   apply:
     name: Apply
     needs: plan
-    # main push ya manual apply/destroy. PR me sirf plan chalta hai.
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.action != 'plan')
+    # Apply SIRF manual: Actions -> Terraform Infra -> Run workflow -> action = apply.
+    # PR / main push par sirf plan chalta hai (auto-apply nahi).
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
     runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["ubuntu-latest"]') }}
     # GitHub Environment par "Required reviewers" laga do => manual approval
     environment: ${{ inputs.environment || 'production' }}

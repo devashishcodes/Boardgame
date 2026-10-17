@@ -19,5 +19,5 @@ ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAp12hejkdGbhowBFZ7pE+Yzct
 # Domain LAST me: neeche dono lines uncomment karke apna domain daalo -> HTTPS + Route53 ban jayenge.
 # Tab tak khali raho, app ALB ke DNS par HTTP se chalegi.
 # (Route53 public hosted zone pehle se honi chahiye)
-# domain_name      = "boardgame.yourdomain.com"
-# hosted_zone_name = "yourdomain.com"
+domain_name      = "boardgame.devashish-gitaction.in"
+hosted_zone_name = "devashish-gitaction.in"

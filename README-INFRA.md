@@ -59,6 +59,7 @@ default-vpc (Pritunl + runner) <== VPC peering ==> boardgame-vpc
 | Variable | `DOCKERHUB_USERNAME` | Docker Hub user |
 | Variable | `DOMAIN_NAME` | (per Environment) deploy ke baad domain check |
 | Variable | `RUNNER_LABELS` | (optional) terraform runner |
+| Variable | `SONAR_QUALITY_GATE_WAIT` | (optional) `true` = SonarCloud Quality Gate fail hone par CI fail. Default `false` |
 
 Environments: `production` (Required reviewers ON), `staging`.
 

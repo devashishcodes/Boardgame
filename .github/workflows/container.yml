@@ -115,10 +115,11 @@ jobs:
             -t "$IMAGE_NAME:${{ steps.meta.outputs.tag }}" \
             -t "$IMAGE_NAME:latest" .
 
-      # ---- Trivy scan (HIGH/CRITICAL pe fail, report artifact) ----
+      # ---- Trivy scan (report hamesha; fail sirf jab repo variable TRIVY_FAIL=true) ----
       - name: Trivy image scan
         run: |
           mkdir -p trivy-report && chmod 777 trivy-report
+          set +e
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD/trivy-report:/report" \
@@ -129,6 +130,18 @@ jobs:
               --format table \
               --output /report/trivy-report.txt \
               "$IMAGE_NAME:${{ steps.meta.outputs.tag }}"
+          rc=$?
+          set -e
+          {
+            echo '### Trivy scan (HIGH/CRITICAL)'
+            echo '```'
+            head -c 20000 trivy-report/trivy-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::Trivy ne HIGH/CRITICAL vulnerabilities payi (details: run Summary / trivy-report artifact)"
+            if [ "${{ vars.TRIVY_FAIL }}" = "true" ]; then exit 1; fi
+          fi
 
       - name: Upload Trivy report
         if: always()

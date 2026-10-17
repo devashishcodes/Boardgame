@@ -36,9 +36,13 @@ jobs:
     name: Deploy to EC2
     # workflow_run me sirf tab jab CI successful ho
     # workflow_run (auto) me: CI success ho AUR repo variable AUTO_DEPLOY == 'true' ho (infra ban jane ke baad set karo)
+    # Public repo: fork PR se trigger na ho -> sirf apne repo ka 'push' event hi accept
     if: >-
       github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' && vars.AUTO_DEPLOY == 'true')
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       vars.AUTO_DEPLOY == 'true')
     runs-on: [self-hosted, linux, pritunl] # SSH private EC2 ke liye Pritunl network zaroori
     environment: ${{ inputs.environment || 'production' }}
     env:

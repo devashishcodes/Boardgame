@@ -32,7 +32,9 @@ default-vpc (Pritunl + runner) <== VPC peering ==> boardgame-vpc
   (AWS API ke liye VPN ki zarurat nahi).
 - CI (`container.yml`) GitHub-hosted `ubuntu-latest` par chalta hai (build/scan ke liye VPN nahi chahiye).
 - Runner par chahiye: `docker`, `git`, `curl`, `unzip`, `awscli`.
-- Self-hosted runner sirf **private repo** par use karo.
+- Self-hosted runner ke saath **public repo me savdhani**: Settings -> Actions -> General -> Fork pull request workflows ->
+  "Require approval for all outside collaborators" ON rakho. `deploy.yml` fork PR se trigger nahi hota (sirf apne repo ka push).
+  Runner par sirf `deploy.yml` chalta hai; Terraform aur CI GitHub-hosted runner par chalte hain.
 - Pritunl server ke SG me peering ka traffic allow karo, aur Pritunl me route add karo: `10.0.0.0/16`
   (staging ke liye `10.1.0.0/16`) taaki VPN clients bhi private EC2 tak pahunchein.
 

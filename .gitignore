@@ -43,3 +43,5 @@ crash.*.log
 # Terraform variable files may contain sensitive values
 *.tfvars
 !terraform/terraform.tfvars.example
+!terraform/terraform.tfvars
+!terraform/envs/*.tfvars

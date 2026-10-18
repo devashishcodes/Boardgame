@@ -106,9 +106,27 @@ def read_sonar():
         data = http_json(f"{server}/api/measures/component?component={key}&metricKeys={metrics}", token)
         for m in data["component"]["measures"]:
             info["measures"][m["metric"]] = m.get("value", "?")
+        info["issues"] = read_sonar_issues(server, key, token)
     except Exception as exc:  # noqa: BLE001 - report kabhi pipeline fail na kare
         info["error"] = f"{type(exc).__name__}: {exc}"
     return info
+
+
+def read_sonar_issues(server, key, token):
+    """Open vulnerabilities/bugs ki chhoti list (file:line + message). Fail ho to khali list."""
+    try:
+        ref = E("GITHUB_REF", "")
+        scope = f"&pullRequest={ref.split('/')[2]}" if ref.startswith("refs/pull/") else ""
+        url = (f"{server}/api/issues/search?componentKeys={key}&types=VULNERABILITY,BUG"
+               f"&resolved=false&ps=20&s=SEVERITY&asc=false{scope}")
+        out = []
+        for i in http_json(url, token).get("issues", []):
+            out.append({"sev": i.get("severity", "?"), "type": i.get("type", "?"),
+                        "where": f"{i.get('component', '').split(':')[-1]}:{i.get('line', '?')}",
+                        "msg": i.get("message", "")})
+        return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 # ------------------------------------------------------------------- trivy
@@ -203,6 +221,8 @@ def main():
         icon = ICON["success"] if gate_ok else ":warning:"
         for c in sonar["conditions"]:
             detail += f"\n      - failed condition: {c.get('metricKey')} ({c.get('actualValue')} vs {c.get('comparator')} {c.get('errorThreshold')})"
+        for i in sonar.get("issues", [])[:6]:
+            detail += f"\n      - {i['sev']} {i['type']}: `{i['where']}` {i['msg']}"
         slack.append(f"{icon} *SonarCloud:* {detail}\n      <{sonar['dashboard']}|Open Sonar dashboard>")
         md.append(f"| SonarCloud | Quality Gate {sonar['gate']} - [dashboard]({sonar['dashboard']}) |")
     else:

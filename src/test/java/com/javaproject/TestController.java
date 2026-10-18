@@ -1,6 +1,7 @@
 package com.javaproject;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
@@ -56,7 +57,7 @@ class TestController {
         requestParams.add("gameType", "Party Game");
 
         int origSize = da.getBoardGames().size();
-        mockMvc.perform(post("/boardgameAdded").params(requestParams))
+        mockMvc.perform(post("/boardgameAdded").with(csrf()).params(requestParams))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/"))
                 .andDo(print());
@@ -75,7 +76,7 @@ class TestController {
 
         review.setText("Edited text");
 
-        mockMvc.perform(post("/reviewAdded").flashAttr("review", review))
+        mockMvc.perform(post("/reviewAdded").with(csrf()).flashAttr("review", review))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/" + review.getGameId() + "/reviews"));
 

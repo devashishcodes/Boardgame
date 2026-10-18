@@ -18,8 +18,12 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
+# Run as a normal user, not root
+RUN addgroup -S spring && adduser -S spring -G spring
+
 # Copy built jar from build stage
 COPY --from=build /app/target/*.jar app.jar
+USER spring:spring
 
 # Expose app port
 EXPOSE 8080

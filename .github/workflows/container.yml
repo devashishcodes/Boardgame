@@ -1,7 +1,7 @@
 name: CI Checks
 
 # CI: clean ws -> checkout -> cred scan -> compile -> unit test -> SonarQube(Cloud)
-#     -> docker build -> Trivy scan -> docker push -> Slack
+#     -> docker build -> Trivy scan -> docker push -> detailed report (Slack + run summary)
 on:
   push:
     branches: [main]
@@ -54,6 +54,7 @@ jobs:
 
       # ---- Credential scanning (report artifact me) ----
       - name: Credential scan (gitleaks)
+        id: gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,10 +70,12 @@ jobs:
           cache: maven
 
       - name: Compile
+        id: compile
         run: ./mvnw --batch-mode --no-transfer-progress compile
 
       # ---- Unit test (report) ----
       - name: Unit tests
+        id: tests
         run: ./mvnw --batch-mode --no-transfer-progress test
 
       - name: Upload unit test report
@@ -88,6 +91,7 @@ jobs:
 
       # ---- SonarQube (config: sonar-project.properties / pom) ----
       - name: SonarQube analysis
+        id: sonar
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: >
@@ -97,6 +101,7 @@ jobs:
           -Dsonar.organization=devashishcodes
           -Dsonar.projectKey=devashishcodes_Boardgame
           -Dsonar.projectName=Boardgame
+          "-Dsonar.exclusions=.github/scripts/**"
           -Dsonar.qualitygate.wait=${{ vars.SONAR_QUALITY_GATE_WAIT || 'false' }}
 
       - name: Upload Sonar report info
@@ -110,6 +115,7 @@ jobs:
 
       # ---- Docker build ----
       - name: Docker build
+        id: build
         run: |
           docker build \
             -t "$IMAGE_NAME:${{ steps.meta.outputs.tag }}" \
@@ -117,20 +123,35 @@ jobs:
 
       # ---- Trivy scan (report hamesha; fail sirf jab repo variable TRIVY_FAIL=true) ----
       - name: Trivy image scan
+        id: trivy
         run: |
-          mkdir -p trivy-report && chmod 777 trivy-report
+          mkdir -p trivy-report trivy-cache # docker root user hai, extra chmod ki zaroorat nahi
           set +e
+          # 1) JSON report (detailed Slack/summary iske data se banta hai) + exit code
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD/trivy-report:/report" \
+            -v "$PWD/trivy-cache:/root/.cache/" \
             aquasec/trivy:latest image \
               --severity HIGH,CRITICAL \
               --ignore-unfixed \
               --exit-code 1 \
+              --format json \
+              --output /report/trivy.json \
+              "$IMAGE_NAME:${{ steps.meta.outputs.tag }}"
+          rc=$?
+          # 2) Table report (same cache, DB dobara download nahi hota)
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD/trivy-report:/report" \
+            -v "$PWD/trivy-cache:/root/.cache/" \
+            aquasec/trivy:latest image \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 0 \
               --format table \
               --output /report/trivy-report.txt \
               "$IMAGE_NAME:${{ steps.meta.outputs.tag }}"
-          rc=$?
           set -e
           {
             echo '### Trivy scan (HIGH/CRITICAL)'
@@ -161,12 +182,31 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Docker push
+        id: push
         if: env.PUSH_IMAGE == 'true'
         run: |
           docker push "$IMAGE_NAME:${{ steps.meta.outputs.tag }}"
           docker push "$IMAGE_NAME:latest"
 
-      # ---- Slack: CI status + report link ----
+      # ---- Detailed report: Slack message + run summary ----
+      - name: Build CI report
+        id: report
+        if: always()
+        continue-on-error: true
+        env:
+          OUT_GITLEAKS: ${{ steps.gitleaks.outcome }}
+          OUT_COMPILE: ${{ steps.compile.outcome }}
+          OUT_TESTS: ${{ steps.tests.outcome }}
+          OUT_SONAR: ${{ steps.sonar.outcome }}
+          OUT_BUILD: ${{ steps.build.outcome }}
+          OUT_TRIVY: ${{ steps.trivy.outcome }}
+          OUT_PUSH: ${{ steps.push.outcome }}
+          JOB_STATUS: ${{ job.status }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: python3 .github/scripts/ci_report.py
+
+      # ---- Slack: detailed multi-line CI report ----
       - name: Slack notification
         if: always()
         uses: slackapi/slack-github-action@v2.0.0
@@ -174,4 +214,4 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "${{ job.status == 'success' && ':white_check_mark:' || ':x:' }} *CI Checks ${{ job.status }}* | repo: ${{ github.repository }} | branch: ${{ github.ref_name }} | commit: ${{ github.sha }} | env: ${{ inputs.environment || 'ci' }}\nReports (gitleaks, unit test, sonar, trivy): ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            text: ${{ toJSON(steps.report.outputs.text || format('CI Checks {0} | {1} | {2}/{3}/actions/runs/{4}', job.status, github.repository, github.server_url, github.repository, github.run_id)) }}

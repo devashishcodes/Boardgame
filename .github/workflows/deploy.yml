@@ -94,7 +94,7 @@ jobs:
           for ip in ${{ steps.hosts.outputs.ips }}; do
             echo "==> Deploying $IMAGE_NAME:$TAG on $ip"
             ssh -i ~/.ssh/boardgame_deploy -o StrictHostKeyChecking=accept-new \
-                -o ConnectTimeout=15 ec2-user@"$ip" \
+                -o ConnectTimeout=15 ubuntu@"$ip" \
                 "DOCKERHUB_USERNAME='$DOCKERHUB_USERNAME' DOCKERHUB_TOKEN='$DOCKERHUB_TOKEN' IMAGE='$IMAGE_NAME:$TAG' APP_PORT='$APP_PORT' bash -s" <<'REMOTE'
           set -euo pipefail
           echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin

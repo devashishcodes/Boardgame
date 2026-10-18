@@ -1,5 +1,6 @@
-data "aws_ssm_parameter" "al2023" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+# Ubuntu 24.04 LTS (Canonical ka official AMI, SSM parameter se latest)
+data "aws_ssm_parameter" "ubuntu" {
+  name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }
 
 # SSM access (SSH ke alawa fallback)
@@ -35,7 +36,7 @@ resource "aws_key_pair" "this" {
 resource "aws_instance" "app" {
   count = length(var.subnet_ids)
 
-  ami                         = data.aws_ssm_parameter.al2023.value
+  ami                         = data.aws_ssm_parameter.ubuntu.value
   instance_type               = var.instance_type
   subnet_id                   = var.subnet_ids[count.index]
   vpc_security_group_ids      = var.security_group_ids

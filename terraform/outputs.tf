@@ -17,3 +17,8 @@ output "app_url" {
 output "vpc_peering_id" {
   value = module.vpc_peering.peering_connection_id
 }
+
+output "ssh_hostnames" {
+  description = "VPN connected hone par: ssh ec2-user@<hostname>"
+  value       = local.enable_domain ? module.route53[0].ssh_hostnames : []
+}

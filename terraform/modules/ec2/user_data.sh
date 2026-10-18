@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euxo pipefail
 
-dnf update -y
-dnf install -y docker
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y docker.io curl
 systemctl enable --now docker
-usermod -aG docker ec2-user
+usermod -aG docker ubuntu

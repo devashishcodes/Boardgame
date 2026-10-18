@@ -50,6 +50,9 @@ jobs:
       APP_PORT: "8080"
       IMAGE_NAME: ${{ vars.DOCKERHUB_USERNAME }}/boardgame
     steps:
+      - name: Clean previous deploy state
+        run: rm -f "$RUNNER_TEMP/deployed.txt"
+
       - name: Resolve image tag
         id: tag
         run: |
@@ -86,6 +89,7 @@ jobs:
 
       # Rolling deploy: ek server ek time par
       - name: Deploy containers
+        id: deploy
         env:
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -111,9 +115,11 @@ jobs:
           done
           echo "health check fail"; docker logs --tail 50 boardgame; exit 1
           REMOTE
+            echo "$ip" >> "$RUNNER_TEMP/deployed.txt"
           done
 
       - name: Public domain check
+        id: domain
         if: vars.DOMAIN_NAME != ''
         run: |
           for i in $(seq 1 12); do
@@ -128,6 +134,43 @@ jobs:
         if: always()
         run: rm -f ~/.ssh/boardgame_deploy
 
+      # ---- Detailed deploy report ----
+      - name: Build deploy report
+        id: report
+        if: always()
+        continue-on-error: true
+        env:
+          JOB_STATUS: ${{ job.status }}
+          IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+          ALL_IPS: ${{ steps.hosts.outputs.ips }}
+          OUT_DEPLOY: ${{ steps.deploy.outcome }}
+          OUT_DOMAIN: ${{ steps.domain.outcome }}
+          DOMAIN: ${{ vars.DOMAIN_NAME }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          icon() { case "$1" in success) echo ":white_check_mark:";; failure) echo ":x:";; cancelled) echo ":no_entry_sign:";; *) echo ":fast_forward:";; esac; }
+          if [ "$JOB_STATUS" = "success" ]; then HEAD=":rocket: *Deploy succeeded*"; else HEAD=":x: *Deploy ${JOB_STATUS}*"; fi
+          DONE_FILE="$RUNNER_TEMP/deployed.txt"
+          {
+            echo "$HEAD - ${GITHUB_REPOSITORY}"
+            echo "*Environment:* ${DEPLOY_ENV} | *Image:* \`${IMAGE_REF}\` | *Trigger:* ${GITHUB_EVENT_NAME} by ${GITHUB_ACTOR}"
+            echo "*Rolling deploy (one server at a time, app port ${APP_PORT}):*"
+            for ip in $ALL_IPS; do
+              if [ -f "$DONE_FILE" ] && grep -qx "$ip" "$DONE_FILE"; then
+                echo "      :white_check_mark: ${ip} - container started, health check passed"
+              else
+                echo "      :x: ${ip} - not deployed / health check failed"
+              fi
+            done
+            if [ -n "$DOMAIN" ]; then
+              echo "$(icon "$OUT_DOMAIN") *Public domain check:* https://${DOMAIN} - ${OUT_DOMAIN}"
+            fi
+            echo "*Run:* <${RUN_URL}|logs>"
+          } > "$RUNNER_TEMP/deploy-report.md"
+          cat "$RUNNER_TEMP/deploy-report.md" | sed 's/:[a-z_]*://g' >> "$GITHUB_STEP_SUMMARY"
+          DELIM="EOF_$(date +%s%N)"
+          { echo "text<<$DELIM"; cat "$RUNNER_TEMP/deploy-report.md"; echo "$DELIM"; } >> "$GITHUB_OUTPUT"
+
       - name: Slack deploy status
         if: always()
         uses: slackapi/slack-github-action@v2.0.0
@@ -135,4 +178,4 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: "${{ job.status == 'success' && ':rocket:' || ':x:' }} *Deploy ${{ job.status }}* | env: ${{ env.DEPLOY_ENV }} | image: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }} | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            text: ${{ toJSON(steps.report.outputs.text || format('Deploy {0} | env: {1} | {2}/{3}/actions/runs/{4}', job.status, env.DEPLOY_ENV, github.server_url, github.repository, github.run_id)) }}

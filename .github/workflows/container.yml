@@ -101,6 +101,7 @@ jobs:
           -Dsonar.organization=devashishcodes
           -Dsonar.projectKey=devashishcodes_Boardgame
           -Dsonar.projectName=Boardgame
+          "-Dsonar.exclusions=.github/scripts/**"
           -Dsonar.qualitygate.wait=${{ vars.SONAR_QUALITY_GATE_WAIT || 'false' }}
 
       - name: Upload Sonar report info
@@ -124,7 +125,7 @@ jobs:
       - name: Trivy image scan
         id: trivy
         run: |
-          mkdir -p trivy-report trivy-cache && chmod 777 trivy-report trivy-cache
+          mkdir -p trivy-report trivy-cache # docker root user hai, extra chmod ki zaroorat nahi
           set +e
           # 1) JSON report (detailed Slack/summary iske data se banta hai) + exit code
           docker run --rm \

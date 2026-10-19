@@ -102,4 +102,11 @@ class TestController {
 
         assertEquals(newSize, origSize - 1);
     }
+
+    @Test
+    public void testDeleteReviewNotFound() throws Exception {
+        mockMvc.perform(get("/deleteReview/{id}", 999999L))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/"));
+    }
 }

@@ -136,7 +136,11 @@ public class HomeController {
 
     @GetMapping("/deleteReview/{id}")
     public String deleteReview(@PathVariable Long id) {
-        Long gameId = da.getReview(id).getGameId();
+        Review review = da.getReview(id);
+        if (review == null) {
+            return "redirect:/";
+        }
+        Long gameId = review.getGameId();
         int returnValue = da.deleteReview(id);
         System.out.println("return value is: " + returnValue);
         return "redirect:/" + gameId + "/reviews";
